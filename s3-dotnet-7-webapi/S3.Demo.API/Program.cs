@@ -1,5 +1,5 @@
 using Amazon.S3;
-
+//https://www.youtube.com/watch?v=2q5jA813ZiI - урок
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
