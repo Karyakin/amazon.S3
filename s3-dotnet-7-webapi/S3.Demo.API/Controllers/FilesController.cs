@@ -26,23 +26,53 @@ namespace S3.Demo.API.Controllers
         {
             var accessKey = _configuration.GetValue<string>("AWS:AccessKey");
             var secretKey = _configuration.GetValue<string>("AWS:SecretKey");
+            
             var client = new AmazonS3Client(accessKey, secretKey, new AmazonS3Config
             {
                 ServiceURL = _configuration.GetSection("AWS:ServiceURL").Value,
             });
+
+            switch (bucketName)
+            {
+                case "presents":
+                    bucketName = DateTime.UtcNow.Year + "-" + BucketsName.PRESENTS;
+                    break;
+                case "avatars":
+                    bucketName = DateTime.UtcNow.Year + "-" + BucketsName.AVATARS;
+                    break;
+                case "promo":
+                    bucketName = DateTime.UtcNow.Year + "-" + BucketsName.PROMO;
+                    break;
+                case "categories":
+                    bucketName = DateTime.UtcNow.Year + "-" + BucketsName.CATEGORIES;
+                    break;
+                default:
+                    throw new ArgumentException("Incorrect buckets name!");
+            }
+            
             
             var bucketExists = await Amazon.S3.Util.AmazonS3Util.DoesS3BucketExistV2Async(client, bucketName);
-            if (!bucketExists) 
-                return NotFound($"Bucket {bucketName} does not exist.");
+
+            if (!bucketExists)
+            {
+               var aa = await client.PutBucketAsync(bucketName);
+            }
+            
+            /*if (!bucketExists) 
+                return NotFound($"Bucket {bucketName} does not exist.");*/
+
+            var fileName = $"{Guid.NewGuid()}.jpg";
             
             var request = new PutObjectRequest()
             {
                 BucketName = bucketName,
-                Key = string.IsNullOrEmpty(prefix) ? file.FileName : $"{prefix?.TrimEnd('/')}/{file.FileName}",
+                Key = string.IsNullOrEmpty(prefix) ? fileName : $"{prefix?.TrimEnd('/')}/{fileName}",
                 InputStream = file.OpenReadStream()
             };
             request.Metadata.Add("Content-Type", file.ContentType);
             await client.PutObjectAsync(request);
+            
+            
             return Ok($"File {prefix}/{file.FileName} uploaded to S3 successfully!");
         }
 
@@ -73,12 +103,13 @@ namespace S3.Demo.API.Controllers
                 {
                     BucketName = bucketName,
                     Key = s.Key,
-                    Expires = DateTime.UtcNow.AddMinutes(1)
+                    Expires = DateTime.UtcNow.AddDays(1)
                 };
                 return new S3ObjectDto()
                 {
                     Name = s.Key.ToString(),
                     PresignedUrl = client.GetPreSignedURL(urlRequest),
+                    
                 };
             });
             return Ok(s3Objects);
@@ -98,6 +129,10 @@ namespace S3.Demo.API.Controllers
             if (!bucketExists) 
                 return NotFound($"Bucket {bucketName} does not exist.");
             var s3Object = await client.GetObjectAsync(bucketName, key);
+
+            var photoUrl = File(s3Object.ResponseStream, s3Object.Headers.ContentType);
+            
+            
             return File(s3Object.ResponseStream, s3Object.Headers.ContentType);
         }
 
