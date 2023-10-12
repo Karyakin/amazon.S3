@@ -1,4 +1,5 @@
-﻿using Amazon.Internal;
+﻿using System.ComponentModel.DataAnnotations;
+using Amazon.Internal;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -22,7 +23,7 @@ namespace S3.Demo.API.Controllers
 
 
         [HttpPost]
-        public async Task<IActionResult> UploadFileAsync(IFormFile file, string bucketName, string? prefix)
+        public async Task<IActionResult> UploadFileAsync(IFormFile file, string bucketName,[Required] string? prefix)
         {
             var accessKey = _configuration.GetValue<string>("AWS:AccessKey");
             var secretKey = _configuration.GetValue<string>("AWS:SecretKey");
@@ -55,7 +56,7 @@ namespace S3.Demo.API.Controllers
 
             if (!bucketExists)
             {
-               var aa = await client.PutBucketAsync(bucketName);
+               var putResult = await client.PutBucketAsync(bucketName);
             }
             
             /*if (!bucketExists) 
@@ -63,17 +64,44 @@ namespace S3.Demo.API.Controllers
 
             var fileName = $"{Guid.NewGuid()}.jpg";
             
-            var request = new PutObjectRequest()
+            var putObjectRequest = new PutObjectRequest()
             {
                 BucketName = bucketName,
                 Key = string.IsNullOrEmpty(prefix) ? fileName : $"{prefix?.TrimEnd('/')}/{fileName}",
                 InputStream = file.OpenReadStream()
             };
-            request.Metadata.Add("Content-Type", file.ContentType);
-            await client.PutObjectAsync(request);
+            putObjectRequest.Metadata.Add("Content-Type", file.ContentType);
+            await client.PutObjectAsync(putObjectRequest);
             
             
-            return Ok($"File {prefix}/{file.FileName} uploaded to S3 successfully!");
+            
+            var request1 = new ListObjectsV2Request()
+            {
+                BucketName = bucketName,
+                Prefix = prefix
+            };
+            var result = await client.ListObjectsV2Async(request1);
+            var s3Objects = result.S3Objects.Select(s =>
+            {
+                var urlRequest = new GetPreSignedUrlRequest()
+                {
+                    BucketName = bucketName,
+                    Key = s.Key,
+                    Expires = DateTime.UtcNow.AddYears(5)
+                };
+                return new S3ObjectDto()
+                {
+                    Name = s.Key.ToString(),
+                    PresignedUrl = client.GetPreSignedURL(urlRequest),
+                    
+                };
+            });
+            
+            return Ok(s3Objects.Select(x=>x.PresignedUrl).FirstOrDefault());
+            
+            
+            
+            //return Ok($"File {prefix}/{file.FileName} uploaded to S3 successfully!");
         }
 
         [HttpGet]
